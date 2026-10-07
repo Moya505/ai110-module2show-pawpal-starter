@@ -1,15 +1,53 @@
 classDiagram
-    %% Replace the placeholders below with your actual classes, attributes, methods, and relationships.
-    %% Keep this file updated so it matches your final implementation.
-
-    class ClassName {
-        +type attribute
-        +method() returnType
+    class Owner {
+        +String name
+        +String availability
+        +List~String~ preferences
+        +addPet(pet: Pet)
+        +removePet(pet: Pet)
+        +updateAvailability(newSchedule: String)
+        +setPreferences(preferences: List~String~)
     }
 
-    class AnotherClass {
-        +type attribute
-        +method() returnType
+    class Pet {
+        +String name
+        +String breed
+        +String weight
+        +int age
+        +Owner owner
+        +List~Task~ taskHistory
+        +addTask(task: Task)
+        +removeTask(task: Task)
+        +getTaskHistory() List~Task~
     }
 
-    ClassName --> AnotherClass : relationship
+    class Task {
+        +String name
+        +String description
+        +String dayOfWeek
+        +int durationMinutes
+        +String priority
+        +Owner owner
+        +Pet pet
+        +isRecurringOn(day: String) bool
+        +updatePriority(newPriority: String)
+        +updateDuration(minutes: int)
+    }
+
+    class SchedulePlanner {
+        +List~Task~ generateDailyPlan(pet: Pet, owner: Owner, availableMinutes: int) List~Task~
+        +sortByPriority(tasks: List~Task~) List~Task~
+        +filterByAvailability(tasks: List~Task~, owner: Owner) List~Task~
+        +explainPlan(plan: List~Task~) String
+    }
+
+    Owner "1" --> "1..*" Pet : owns
+    Pet "1" --> "0..*" Task : has
+    Owner "1" --> "0..*" Task : manages
+    SchedulePlanner ..> Task : prioritizes
+    SchedulePlanner ..> Pet : plans for
+    SchedulePlanner ..> Owner : checks constraints
+
+    %% Suggested refinement:
+    %% If you want a simpler version, keep only Owner, Pet, and Task and remove SchedulePlanner.
+    %% The relationship should be: one owner owns many pets, one pet has many tasks, and each task is linked to its owner and pet.
