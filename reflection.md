@@ -68,8 +68,4 @@ The tradeoff of the scheduler is that it warns the user that 2 tasks begin at th
 
 **b. What you would improve**
 
-- If you had another iteration, what would you improve or redesign?
-
-**c. Key takeaway**
-
-- What is one important thing you learned about designing systems or working with AI on this project?
+- If you had another iteration, what would you improve or redes

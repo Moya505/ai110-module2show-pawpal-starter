@@ -63,18 +63,46 @@ Today's plan (85 minutes total):
 ## 🧪 Testing PawPal+
 
 ```bash
-# Run the full test suite:
-pytest
-
-# Run with coverage:
-pytest --cov
+python -m pytest
 ```
 
-Sample test output:
+`pytest.ini` points pytest at the `tests/` folder and adds `diagrams/` to the import path, so the command works from the project root.
+
+### What the tests cover
+
+The tests are in [tests/test_pawpal.py](tests/test_pawpal.py):
+
+- **Task basics:** `mark_complete()` sets a task's `completed` flag, and `add_task()` adds a task to a pet.
+- **Sorting correctness:** `sort_by_time()` returns tasks in chronological order, including midnight and single-digit hours.
+- **Recurrence logic:** completing a daily task creates a new incomplete task due the next day (including a month rollover), and completing a non-daily task creates nothing.
+- **Conflict detection:** `detect_conflicts()` flags tasks at the same time for different pets, and stays quiet when times or days differ.
+
+### Test output
 
 ```
-# Paste your pytest output here
+============================= test session starts ==============================
+platform darwin -- Python 3.11.5, pytest-7.4.0, pluggy-1.0.0 -- /Users/jamoyamondle/anaconda3/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/jamoyamondle/Documents/GitHub/ai110-module2show-pawpal-starter
+configfile: pytest.ini
+testpaths: tests
+plugins: anyio-3.5.0, typeguard-2.13.3
+collecting ... collected 7 items
+
+tests/test_pawpal.py::test_mark_complete_sets_completed_true PASSED      [ 14%]
+tests/test_pawpal.py::test_add_task_increases_pet_task_count PASSED      [ 28%]
+tests/test_pawpal.py::test_sort_by_time_returns_chronological_order PASSED [ 42%]
+tests/test_pawpal.py::test_daily_task_completion_creates_next_day_task PASSED [ 57%]
+tests/test_pawpal.py::test_non_daily_task_completion_creates_no_new_task PASSED [ 71%]
+tests/test_pawpal.py::test_detect_conflicts_flags_duplicate_times_across_pets PASSED [ 85%]
+tests/test_pawpal.py::test_detect_conflicts_returns_empty_when_times_differ PASSED [100%]
+
+============================== 7 passed in 1.66s ===============================
 ```
+
+### Confidence level: ★★★★☆ (4 / 5)
+
+All 7 tests pass, and they cover the three smarter-scheduling features (sorting, recurrence, conflict detection) and the happy paths for each. I'm not giving 5 stars because some behavior isn't tested yet. `generate_daily_plan()`, `filter_by_availability()` and `filter_by_completion()` have no tests. Conflict detection only catches exact start-time matches, so overlapping durations aren't flagged. Double completion and multi-day recurring tasks aren't tested either.
 
 ## 📐 Smarter Scheduling
 
@@ -157,3 +185,9 @@ Classes:
 
 The relationship between each task: owner owns pet, pet owns owner class, and pet owner owns task class
 
+Core behavior of pawpal_system.py
+Ownership model: an Owner has Pets, and each Pet has Tasks, so every task can reach its pet and its owner.
+Daily plan generation: generate_daily_plan() drops tasks that don't fit the owner's availability, sorts the rest by priority, and greedily fills the available minutes.
+Sorting and filtering: the planner can sort tasks by start time or priority, and filter them by completion status or owner availability.
+Conflict detection: detect_conflicts() returns warnings, without raising errors, when tasks share the same day and start time, for the same pet or different pets.
+Recurring tasks: completing a daily task with mark_complete() creates the next day's task, using timedelta to calculate the date.
