@@ -102,7 +102,7 @@ tests/test_pawpal.py::test_detect_conflicts_returns_empty_when_times_differ PASS
 
 ### Confidence level: ★★★★☆ (4 / 5)
 
-All 7 tests pass, and they cover the three smarter-scheduling features (sorting, recurrence, conflict detection) and the happy paths for each. I'm not giving 5 stars because some behavior isn't tested yet. `generate_daily_plan()`, `filter_by_availability()` and `filter_by_completion()` have no tests. Conflict detection only catches exact start-time matches, so overlapping durations aren't flagged. Double completion and multi-day recurring tasks aren't tested either.
+All 7 tests pass, and they cover the three smarter-scheduling features (sorting, recurrence, conflict detection) and the happy paths for each. Some behavior weren't tested yet. `generate_daily_plan()`, `filter_by_availability()` and `filter_by_completion()` have no tests. Conflict detection only catches exact start-time matches, so overlapping durations aren't flagged. Double completion and multi-day recurring tasks aren't tested either.Therefor I would give it a 3.5/5
 
 ## 📐 Smarter Scheduling
 
@@ -142,13 +142,49 @@ All scheduling logic lives in [diagrams/pawpal_system.py](diagrams/pawpal_system
 
 ## 📸 Demo Walkthrough
 
-Describe your app in numbered steps so a reader can follow along without watching a video:
+Start the app with `streamlit run app.py`. It has three tabs.
 
-1. <!-- Describe this step -->
-2. <!-- Describe this step -->
-3. <!-- Describe this step -->
-4. <!-- Describe this step -->
-5. <!-- Add more steps as needed -->
+### Main UI features
+
+- **Owner & pets:** save the owner's name, the days they are available, the minutes free on those days, and care preferences. Add pets with a name, breed, weight and age. A table lists the pets.
+- **Care tasks:** add a task for a pet with a name, description, scheduled days, start time, duration, frequency and priority. The tab also lets you:
+  - see a conflict alert (`st.warning`) or an all-clear message (`st.success`) for pending tasks;
+  - mark a pending task complete;
+  - filter the task table by pet and by status (All, Pending, Complete);
+  - sort the table by start time or priority.
+- **Daily plan:** choose a day, a time limit and a pet, then click **Generate daily plan**. The plan appears as a numbered table in time order, with a summary of the minutes used, conflict warnings, and a warning that names any tasks that didn't fit.
+
+### Example workflow
+
+1. **Owner & pets:** enter an owner name, keep the available days, set 180 minutes, and click **Save owner**. Then add a pet, such as NichiBear, a Great Dane and Labrador mix.
+2. **Care tasks:** add "Morning Walk" for NichiBear on today's weekday at 7:00 AM for 30 minutes, with Daily frequency and High priority. Add a second task for the same time, for example "Vet Checkup".
+3. **Care tasks:** a warning appears saying two tasks start at the same time, naming both tasks and their pets. Change one task's time to clear it.
+4. **Care tasks:** use the filters to show only pending tasks, sorted by start time. Select "Morning Walk" under **Mark a task complete** and click **Mark complete**. A success message says the next daily occurrence was created for tomorrow.
+5. **Daily plan:** pick today's weekday and a pet, then click **Generate daily plan**. The time-ordered schedule appears with the total minutes used, and any task that didn't fit is listed in a warning.
+
+### Scheduler behaviors shown
+
+- **Sorting:** the task table and the daily plan are ordered by start time (`sort_by_time()`), with priority sorting available in the task table (`sort_by_priority()`).
+- **Filtering:** tasks are filtered by completion status (`filter_by_completion()`) and by pet. The plan keeps only tasks that fit the selected day and available minutes.
+- **Conflict warnings:** `detect_conflicts()` flags tasks that share a day and start time, without crashing the app.
+- **Daily recurrence:** `Task.mark_complete()` creates the next day's task for daily tasks.
+- **Time budget:** the plan fills the available minutes by priority and reports which tasks were left out.
+
+### Sample CLI output
+
+Running `python main.py` from the `diagrams/` folder schedules three tasks for today, prints the schedule, flags the 6:30 clash between two pets' tasks, then completes a daily task:
+
+```
+Today's Schedule
+Today's plan (120 minutes total):
+- [HIGH] Vet Checkup at 06:30:00 (45 min)
+- [HIGH] Feed Gertrude at 06:30:00 (45 min)
+- [HIGH] Morning Walk at 09:30:00 (30 min)
+Warning: 2 tasks on Wednesday at 06:30: 'Vet Checkup' (NichiBear), 'Feed Gertrude' (Gertrude)
+
+Completed: ['Feed Gertrude']
+Next occurrence created: Feed Gertrude on 2026-10-08 (Thursday)
+```
 
 **Screenshot or video** *(optional)*: <!-- Insert a screenshot or link to a demo video here -->
 
@@ -191,3 +227,15 @@ Daily plan generation: generate_daily_plan() drops tasks that don't fit the owne
 Sorting and filtering: the planner can sort tasks by start time or priority, and filter them by completion status or owner availability.
 Conflict detection: detect_conflicts() returns warnings, without raising errors, when tasks share the same day and start time, for the same pet or different pets.
 Recurring tasks: completing a daily task with mark_complete() creates the next day's task, using timedelta to calculate the date.
+
+## ✨ Features
+
+- **Sorting by time:** `sort_by_time()` orders tasks from earliest to latest start time. It uses `sorted()` with a lambda key that converts each start time to a zero-padded `"HH:MM"` string, so "08:05" correctly comes before "10:00". Tasks with the same time keep their original order.
+- **Sorting by priority:** `sort_by_priority()` orders tasks HIGH → MEDIUM → LOW using the `Priority` enum value as the sort key.
+- **Greedy daily planning:** `generate_daily_plan()` filters out tasks that don't fit the owner's availability, sorts the rest by priority, then walks the list once. It adds each task that still fits in the remaining minutes. It is fast and always favors high-priority tasks, but it doesn't always find the best possible mix of tasks.
+- **Availability filtering:** `filter_by_availability()` keeps only tasks whose duration fits within the owner's free minutes on every day the task occurs.
+- **Completion filtering:** `filter_by_completion()` returns only pending or only completed tasks. Pets and owners also expose `pending_tasks` and `completed_tasks`, and `owner.tasks` combines the tasks of all pets.
+- **Conflict warnings:** `detect_conflicts()` groups tasks by `(day, start_time)` in one pass and returns a warning message for each group with two or more tasks. It works for the same pet or different pets and never raises an error. It only catches exact start-time matches, not overlapping durations.
+- **Daily recurrence:** `Task.mark_complete()` marks a task done. For a `DAILY` task, it also creates a new incomplete task due the next day, calculated with `timedelta(days=1)` so month and year rollovers are correct. Completing the same task twice does not create a duplicate.
+- **Plan explanation:** `explain_plan()` turns a plan into a readable summary with the total minutes and each task's priority, name, time and duration.
+- **Streamlit display:** `app.py` shows these results with `st.table`, `st.success` and `st.warning`. It includes pet and status filters, a sort selector, conflict alerts, a "Mark complete" action, and a warning for tasks that didn't fit in the available time.

@@ -81,17 +81,9 @@ class Task:
 
 
 	def mark_complete(self) -> Optional["Task"]:
-		"""Marks this task as completed and, if it is daily, schedules the next occurrence.
-
-		For a DAILY task, a copy is created with due_date advanced by
-		timedelta(days=1) and `days` set to that date's weekday, so month and year
-		rollovers are handled correctly. The copy is incomplete and is added to the
-		same pet's task list.
-
-		Returns:
-			The newly created Task for a daily task, or None if the task is not daily
-			or was already complete (which also prevents duplicate occurrences).
-		"""
+		"""Marks this task as completed. For a daily task, also creates and returns
+		a new incomplete instance due the next day (None for any other frequency,
+		or if the task was already complete)."""
 		if self.completed:
 			return None
 		self.completed = True

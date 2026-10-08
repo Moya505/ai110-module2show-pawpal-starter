@@ -1,5 +1,6 @@
 from datetime import time
 
+import pandas as pd
 import streamlit as st
 
 from diagrams.pawpal_system import (
@@ -14,6 +15,16 @@ from diagrams.pawpal_system import (
 
 
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="wide")
+
+planner = SchedulePlanner()
+
+
+def numbered_table(rows):
+    """Builds a table with a 1-based row number as its index, for st.table."""
+    table = pd.DataFrame(rows)
+    table.index = range(1, len(table) + 1)
+    return table
+
 
 if "owner" not in st.session_state:
     st.session_state.owner = None
@@ -171,24 +182,95 @@ with tasks_tab:
                 st.session_state.schedule_result = None
                 st.success(f"Added {task.name} for {selected_pet.name}.")
 
-        task_rows = [
-            {
-                "Pet": pet.name,
-                "Task": task.name,
-                "Days": ", ".join(day.value for day in task.days),
-                "Time": task.start_time.strftime("%I:%M %p").lstrip("0"),
-                "Duration (min)": task.duration_minutes,
-                "Priority": task.priority.name.title(),
-                "Status": "Complete" if task.completed else "Pending",
-            }
-            for pet in owner.pets
-            for task in pet.tasks
-        ]
         st.divider()
-        if task_rows:
-            st.dataframe(task_rows, hide_index=True, use_container_width=True)
-        else:
+        if not owner.tasks:
             st.info("No care tasks have been added yet.")
+        else:
+            conflicts = planner.detect_conflicts(owner.pending_tasks)
+            if conflicts:
+                st.warning(
+                    f"{len(conflicts)} scheduling conflict(s) found. "
+                    "Move one of the tasks to a different time."
+                )
+                for message in conflicts:
+                    st.warning(message.removeprefix("Warning: "), icon="⚠️")
+            else:
+                st.success("No scheduling conflicts among pending tasks.")
+
+            pending_options = planner.sort_by_time(planner.filter_by_completion(owner.tasks, completed=False))
+            if pending_options:
+                task_to_complete = st.selectbox(
+                    "Mark a task complete",
+                    options=pending_options,
+                    format_func=lambda task: (
+                        f"{task.name} ({task.pet.name}, {task.start_time:%H:%M}, "
+                        f"{', '.join(day.value for day in task.days)})"
+                    ),
+                )
+                if st.button("Mark complete"):
+                    next_task = task_to_complete.mark_complete()
+                    st.session_state.schedule_result = None
+                    if next_task is not None:
+                        st.success(
+                            f"Completed {task_to_complete.name}. Next occurrence created for "
+                            f"{next_task.due_date:%A, %b %d}."
+                        )
+                    else:
+                        st.success(f"Completed {task_to_complete.name}.")
+
+            st.subheader("All tasks")
+            filter_cols = st.columns(3)
+            with filter_cols[0]:
+                pet_filter = st.selectbox(
+                    "Pet",
+                    options=["All pets"] + [pet.name for pet in owner.pets],
+                    key="task_pet_filter",
+                )
+            with filter_cols[1]:
+                status_filter = st.selectbox(
+                    "Status",
+                    options=["All", "Pending", "Complete"],
+                    key="task_status_filter",
+                )
+            with filter_cols[2]:
+                sort_choice = st.selectbox(
+                    "Sort by",
+                    options=["Start time", "Priority"],
+                    key="task_sort",
+                )
+
+            visible_tasks = owner.tasks
+            if pet_filter != "All pets":
+                visible_tasks = [task for task in visible_tasks if task.pet.name == pet_filter]
+            if status_filter != "All":
+                visible_tasks = planner.filter_by_completion(
+                    visible_tasks, completed=(status_filter == "Complete")
+                )
+            if sort_choice == "Start time":
+                visible_tasks = planner.sort_by_time(visible_tasks)
+            else:
+                visible_tasks = planner.sort_by_priority(visible_tasks)
+
+            if visible_tasks:
+                st.caption(f"Showing {len(visible_tasks)} of {len(owner.tasks)} tasks, sorted by {sort_choice.lower()}.")
+                st.table(
+                    numbered_table(
+                        [
+                            {
+                                "Pet": task.pet.name,
+                                "Task": task.name,
+                                "Days": ", ".join(day.value for day in task.days),
+                                "Time": task.start_time.strftime("%I:%M %p").lstrip("0"),
+                                "Duration (min)": task.duration_minutes,
+                                "Priority": task.priority.name.title(),
+                                "Status": "Complete" if task.completed else "Pending",
+                            }
+                            for task in visible_tasks
+                        ]
+                    )
+                )
+            else:
+                st.info("No tasks match these filters.")
 
 with plan_tab:
     st.subheader("Daily plan")
@@ -228,9 +310,9 @@ with plan_tab:
                     for task in selected_plan_pet.pending_tasks
                     if selected_day in task.days and task.duration_minutes <= owner_minutes
                 ]
-                planner = SchedulePlanner()
                 candidates = planner.sort_by_priority(eligible_tasks)
-                remaining_minutes = min(int(plan_limit), owner_minutes)
+                budget = min(int(plan_limit), owner_minutes)
+                remaining_minutes = budget
                 plan = []
                 for task in candidates:
                     if task.duration_minutes <= remaining_minutes:
@@ -239,7 +321,10 @@ with plan_tab:
                 st.session_state.schedule_result = {
                     "pet_name": selected_plan_pet.name,
                     "day": selected_day,
-                    "plan": plan,
+                    "plan": planner.sort_by_time(plan),
+                    "skipped": [task for task in candidates if task not in plan],
+                    "budget": budget,
+                    "conflicts": planner.detect_conflicts(plan),
                 }
 
         result = st.session_state.schedule_result
@@ -247,19 +332,30 @@ with plan_tab:
             st.divider()
             st.markdown(f"**{result['pet_name']} · {result['day'].value}**")
             if result["plan"]:
-                st.dataframe(
-                    [
-                        {
-                            "Time": task.start_time.strftime("%I:%M %p").lstrip("0"),
-                            "Care task": task.name,
-                            "Duration (min)": task.duration_minutes,
-                            "Priority": task.priority.name.title(),
-                        }
-                        for task in result["plan"]
-                    ],
-                    hide_index=True,
-                    use_container_width=True,
+                used_minutes = sum(task.duration_minutes for task in result["plan"])
+                st.success(
+                    f"Scheduled {len(result['plan'])} task(s) using {used_minutes} of "
+                    f"{result['budget']} available minutes."
                 )
-                st.caption(SchedulePlanner().explain_plan(result["plan"]))
+                for message in result["conflicts"]:
+                    st.warning(message.removeprefix("Warning: "), icon="⚠️")
+                st.table(
+                    numbered_table(
+                        [
+                            {
+                                "Time": task.start_time.strftime("%I:%M %p").lstrip("0"),
+                                "Care task": task.name,
+                                "Duration (min)": task.duration_minutes,
+                                "Priority": task.priority.name.title(),
+                            }
+                            for task in result["plan"]
+                        ]
+                    )
+                )
+                if result["skipped"]:
+                    st.warning(
+                        "Not enough time for: "
+                        + ", ".join(f"{task.name} ({task.duration_minutes} min)" for task in result["skipped"])
+                    )
             else:
                 st.info("No pending tasks for this pet fit the selected day and time limit.")

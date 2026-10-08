@@ -1,21 +1,27 @@
 classDiagram
     class Owner {
         +String name
-        +String availability
+        +Dict~DayOfWeek, int~ availability
         +List~String~ preferences
+        +List~Pet~ pets
+        +List~Task~ tasks
+        +List~Task~ pendingTasks
+        +List~Task~ completedTasks
         +addPet(pet: Pet)
         +removePet(pet: Pet)
-        +updateAvailability(newSchedule: String)
+        +updateAvailability(newSchedule: Dict~DayOfWeek, int~)
         +setPreferences(preferences: List~String~)
     }
 
     class Pet {
         +String name
         +String breed
-        +String weight
+        +float weight
         +int age
         +Owner owner
-        +List~Task~ taskHistory
+        +List~Task~ tasks
+        +List~Task~ pendingTasks
+        +List~Task~ completedTasks
         +addTask(task: Task)
         +removeTask(task: Task)
         +getTaskHistory() List~Task~
@@ -24,30 +30,69 @@ classDiagram
     class Task {
         +String name
         +String description
-        +String dayOfWeek
+        +List~DayOfWeek~ days
+        +time startTime
         +int durationMinutes
-        +String priority
-        +Owner owner
+        +Frequency frequency
+        +Priority priority
         +Pet pet
-        +isRecurringOn(day: String) bool
-        +updatePriority(newPriority: String)
+        +bool completed
+        +date dueDate
+        +Owner owner
+        +isRecurringOn(day: DayOfWeek) bool
+        +updatePriority(newPriority: Priority)
         +updateDuration(minutes: int)
+        +markComplete() Task
+        +markIncomplete()
     }
 
     class SchedulePlanner {
-        +List~Task~ generateDailyPlan(pet: Pet, owner: Owner, availableMinutes: int) List~Task~
+        +generateDailyPlan(pet: Pet, owner: Owner, availableMinutes: int) List~Task~
         +sortByPriority(tasks: List~Task~) List~Task~
+        +sortByTime(tasks: List~Task~) List~Task~
         +filterByAvailability(tasks: List~Task~, owner: Owner) List~Task~
+        +filterByCompletion(tasks: List~Task~, completed: bool) List~Task~
+        +detectConflicts(tasks: List~Task~) List~String~
         +explainPlan(plan: List~Task~) String
     }
 
-    Owner "1" --> "1..*" Pet : owns
-    Pet "1" --> "0..*" Task : has
-    Owner "1" --> "0..*" Task : manages
-    SchedulePlanner ..> Task : prioritizes
-    SchedulePlanner ..> Pet : plans for
-    SchedulePlanner ..> Owner : checks constraints
+    class DayOfWeek {
+        <<enumeration>>
+        MONDAY
+        TUESDAY
+        WEDNESDAY
+        THURSDAY
+        FRIDAY
+        SATURDAY
+        SUNDAY
+    }
 
-    %% Suggested refinement:
-    %% If you want a simpler version, keep only Owner, Pet, and Task and remove SchedulePlanner.
-    %% The relationship should be: one owner owns many pets, one pet has many tasks, and each task is linked to its owner and pet.
+    class Priority {
+        <<enumeration>>
+        HIGH = 1
+        MEDIUM = 2
+        LOW = 3
+    }
+
+    class Frequency {
+        <<enumeration>>
+        ONCE
+        TWICE
+        THREE_TIMES
+        FOUR_TIMES
+        DAILY
+    }
+
+    Owner "1" *-- "0..*" Pet : owns
+    Pet "0..*" --> "1" Owner : owner
+    Pet "1" *-- "0..*" Task : has
+    Task "0..*" --> "1" Pet : pet
+    Owner ..> Task : tasks derived via pets
+    Task ..> Task : markComplete creates next daily occurrence
+    Task ..> DayOfWeek : days
+    Task ..> Priority : priority
+    Task ..> Frequency : frequency
+    Owner ..> DayOfWeek : availability keys
+    SchedulePlanner ..> Task : sorts, filters, flags conflicts in
+    SchedulePlanner ..> Pet : plans for
+    SchedulePlanner ..> Owner : checks availability
